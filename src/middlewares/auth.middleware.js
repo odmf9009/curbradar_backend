@@ -29,7 +29,7 @@ async function authMiddleware(req, res, next) {
 
     next();
   } catch (err) {
-    console.error('[Auth] Error verificando token:', err.message);
+    console.error('[Auth] Error verificando token — code:', err.code, '| msg:', err.message);
 
     if (err.code === 'auth/id-token-expired') {
       return res.status(401).json({ error: 'Token expirado, vuelve a iniciar sesión' });
@@ -38,7 +38,7 @@ async function authMiddleware(req, res, next) {
       return res.status(401).json({ error: 'Token inválido' });
     }
 
-    return res.status(401).json({ error: 'No autorizado' });
+    return res.status(401).json({ error: 'No autorizado', code: err.code || 'unknown' });
   }
 }
 

@@ -96,6 +96,10 @@ io.on('connection', (socket) => {
   });
 });
 
+// Trust proxy — Nginx pasa la IP real en X-Forwarded-For
+// Sin esto, express-rate-limit ve 127.0.0.1 para todos los requests
+app.set('trust proxy', 1);
+
 // ─── Middlewares Globales ────────────────────────────────────────────────────
 app.use(helmet());
 app.use(compression());
