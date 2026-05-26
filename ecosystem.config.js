@@ -32,12 +32,12 @@ module.exports = {
       // ⚠️ Las sensibles van en el archivo .env del servidor, NO aquí
       env_production: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3001,
       },
 
       env_development: {
         NODE_ENV: 'development',
-        PORT: 3000,
+        PORT: 3001,
       },
 
       // Logs
