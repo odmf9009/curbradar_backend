@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const path = require('path');
 
 function initFirebase() {
   if (admin.apps.length > 0) return; // Ya inicializado
@@ -11,7 +12,8 @@ function initFirebase() {
     credential = admin.credential.cert(serviceAccount);
   } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
     // Opción para desarrollo local (archivo JSON)
-    const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+    const absolutePath = path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+    const serviceAccount = require(absolutePath);
     credential = admin.credential.cert(serviceAccount);
   } else {
     throw new Error('No se encontró configuración de Firebase Admin SDK');
