@@ -121,6 +121,9 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+// ─── Static Files ────────────────────────────────────────────────────────────
+app.use(express.static('public'));
+
 // ─── Health Check ────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({
