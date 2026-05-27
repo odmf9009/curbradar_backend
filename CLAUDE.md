@@ -951,3 +951,35 @@ res.json({ object: toClientObject(curbObjectDoc) });
 ---
 
 *Actualizado: Mayo 2026 — curbradar_backend v1.0.0*
+
+---
+
+## 20. Changelog
+
+### 2026-05-26 — Fixes producción + infraestructura
+
+**server.js:**
+- `app.set('trust proxy', 1)` — express-rate-limit leía 127.0.0.1 para todos los clientes por estar detrás de Nginx; esto lo corrige leyendo X-Forwarded-For
+- `app.use(express.static('public'))` — sirve archivos estáticos desde `public/`
+
+**src/middlewares/auth.middleware.js:**
+- Mejorado logging de errores: ahora muestra `err.code` y `err.message` por separado para diagnosticar errores Firebase
+
+**public/privacy.html** — política de privacidad de CurbRadar (accesible en curbradar.tech/privacy.html, no desde api.curbradar.tech)
+
+**MongoDB (VPS):**
+- Auth habilitada (`security.authorization: enabled` en `/etc/mongod.conf`)
+- Usuario creado: `curbradar_app` con rol `readWrite` en db `curbradar`
+- `.env` actualizado: `MONGODB_URI=mongodb://curbradar_app:CurbR4d4r_S3cur3!@localhost:27017/curbradar`
+- Fix permisos: `sudo chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb`
+
+**Firebase Storage (.env en VPS):**
+- `FIREBASE_STORAGE_BUCKET=curbradar-6d8f0.firebasestorage.app` (era `.appspot.com`, causaba error "bucket does not exist")
+
+**Nginx (VPS `/etc/nginx/sites-available/curbradar-api`):**
+- `client_max_body_size 15m;` en el bloque `location /` — antes daba 413 en uploads de imágenes
+
+**Infraestructura VPS:**
+- `/var/www/curbradar_web/` — directorio del sitio web principal (curbradar.tech)
+- Config Nginx: `curbradar-web` sirve estáticos desde `/var/www/curbradar_web`, SSL via Certbot
+- Privacy policy copiada a `/var/www/curbradar_web/privacy.html`
