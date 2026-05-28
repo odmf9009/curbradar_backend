@@ -13,7 +13,8 @@ const curbObjectSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
     category: { type: String, enum: CATEGORIES, default: 'Otros' },
-    imageUrls: [{ type: String }],
+    imageUrl: { type: String }, // Imagen principal
+    imageUrls: [{ type: String }], // Historial de imágenes
 
     // Geolocalización (índice 2dsphere para queries de proximidad)
     location: {
@@ -53,6 +54,7 @@ const curbObjectSchema = new mongoose.Schema(
     // Métricas
     views: { type: Number, default: 0 },
     confirmations: { type: Number, default: 0 },
+    confirmedBy: { type: Map, of: Date, default: {} }, // IDs de usuarios que confirmaron
     estimatedValue: { type: Number, default: 0.0 },
 
     // Chat
