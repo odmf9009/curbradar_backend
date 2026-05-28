@@ -53,6 +53,7 @@ const curbObjectSchema = new mongoose.Schema(
     // Métricas
     views: { type: Number, default: 0 },
     confirmations: { type: Number, default: 0 },
+    confirmedByIds: [{ type: String }], // UIDs de usuarios que ya confirmaron (anti-duplicado)
     estimatedValue: { type: Number, default: 0.0 },
 
     // Chat

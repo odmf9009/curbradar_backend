@@ -267,20 +267,17 @@ router.post('/:id/confirm', authMiddleware, async (req, res, next) => {
       return res.status(404).json({ error: 'Objeto no encontrado' });
     }
 
-    const confirmationKey = `confirmations.${req.firebaseUid}`;
-    const alreadyConfirmed = await CurbObject.findOne({
-      _id: req.params.id,
-      [confirmationKey]: { $exists: true },
-    });
-
-    if (alreadyConfirmed) {
+    // Verificar si este usuario ya confirmó usando el array confirmedByIds
+    if (object.confirmedByIds?.includes(req.firebaseUid)) {
       return res.status(409).json({ error: 'Ya confirmaste este objeto', firstTime: false });
     }
+
+    const newCount = (object.confirmations || 0) + 1;
 
     await CurbObject.findByIdAndUpdate(req.params.id, {
       lastConfirmedAt: new Date(),
       $inc: { confirmations: 1 },
-      $set: { [confirmationKey]: new Date() },
+      $addToSet: { confirmedByIds: req.firebaseUid },
     });
 
     await addPointsToUser(req.firebaseUid, POINTS.CONFIRM_OBJECT, { confirmationsCount: 1 });
@@ -289,7 +286,7 @@ router.post('/:id/confirm', authMiddleware, async (req, res, next) => {
     emitObjectEvent(req, 'object:updated', {
       objectId: req.params.id,
       lastConfirmedAt: new Date().toISOString(),
-      confirmations: (object.confirmations || 0) + 1,
+      confirmations: newCount,
     });
 
     res.json({ message: 'Confirmación registrada', firstTime: true });
