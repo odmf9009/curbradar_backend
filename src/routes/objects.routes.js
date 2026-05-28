@@ -58,13 +58,11 @@ const updateObjectImage = async (req, res) => {
     const { imageUrl } = req.body;
 
     console.log(`[Backend] 📸 PATCH /api/objects/${id}/image`);
-    console.log(`[Backend] 📦 Body:`, req.body);
 
     if (!imageUrl) {
       return res.status(400).json({ message: 'imageUrl is required' });
     }
 
-    // Actualizamos imageUrl y también lo añadimos al array imageUrls para historial
     const object = await CurbObject.findByIdAndUpdate(
       id,
       {
@@ -76,26 +74,20 @@ const updateObjectImage = async (req, res) => {
     );
 
     if (!object) {
-      console.log(`[Backend] ❌ Objeto no encontrado: ${id}`);
       return res.status(404).json({ message: 'Object not found' });
     }
 
-    // Limitar historial a 5 fotos
     if (object.imageUrls && object.imageUrls.length > 5) {
       object.imageUrls = object.imageUrls.slice(0, 5);
       await object.save();
     }
 
-    console.log(`[Backend] ✅ Imagen actualizada con éxito`);
-
-    // Puntos para colaboradores (opcional)
-    if (object.postedByUserId !== req.firebaseUid) {
+    const wasUpdatedByOthers = object.postedByUserId !== req.firebaseUid;
+    if (wasUpdatedByOthers) {
       await addPointsToUser(req.firebaseUid, POINTS.CONFIRM_OBJECT);
     }
 
     const clientObj = toClientObject(object);
-
-    // Notificar vía Socket
     emitObjectEvent(req, 'object:updated', {
       objectId: id,
       object: clientObj,
@@ -115,18 +107,19 @@ const updateObjectImage = async (req, res) => {
 // Diagnóstico
 router.get('/ping', (req, res) => res.json({ status: 'Objects Router is ONLINE' }));
 
-// ACTUALIZAR IMAGEN (Ruta específica solicitada)
+// ACTUALIZAR IMAGEN
 router.patch('/:id/image', authMiddleware, updateObjectImage);
 
 // Listar objetos
 router.get('/', authMiddleware, async (req, res, next) => {
   try {
-    const { lat, lng, radius = 5000, category, status, searchQuery } = req.query;
+    const { lat, lng, radius = 5000, category, status, timeRange, searchQuery, page = 1, limit = 50 } = req.query;
     if (!lat || !lng) return res.status(400).json({ error: 'Faltan coordenadas' });
 
+    const expiryLimit = new Date(Date.now() - 48 * 60 * 60 * 1000);
     const query = {
       isDeleted: false,
-      lastConfirmedAt: { $gt: new Date(Date.now() - 48*3600000) },
+      lastConfirmedAt: { $gt: expiryLimit },
       location: {
         $near: {
           $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
@@ -134,27 +127,47 @@ router.get('/', authMiddleware, async (req, res, next) => {
         }
       }
     };
+
     if (category && category !== 'Todos') query.category = category;
     if (status && status !== 'all') query.status = status;
+    if (timeRange && timeRange !== 'all') {
+      const hours = { '1h': 1, '6h': 6, '24h': 24 }[timeRange];
+      if (hours) query.createdAt = { $gt: new Date(Date.now() - hours * 3600000) };
+    }
     if (searchQuery) query.$text = { $search: searchQuery };
 
-    const objects = await CurbObject.find(query).limit(50).lean();
-    res.json({ objects: objects.map(toClientObject) });
+    const objects = await CurbObject.find(query).limit(parseInt(limit)).skip((parseInt(page) - 1) * parseInt(limit)).lean();
+    res.json({ objects: objects.map(toClientObject), total: objects.length });
   } catch (err) { next(err); }
 });
 
 // Crear objeto
 router.post('/', authMiddleware, async (req, res, next) => {
   try {
-    const { title, latitude, longitude } = req.body;
+    const { title, description, category, imageUrls, latitude, longitude, address, locality, estimatedValue } = req.body;
+    if (!title || latitude == null || longitude == null) {
+      return res.status(400).json({ error: 'Faltan campos requeridos' });
+    }
+
     const newObject = await CurbObject.create({
-      ...req.body,
+      title: title.trim(),
+      description: description || '',
+      category: category || 'Otros',
+      imageUrls: imageUrls || [],
       location: { type: 'Point', coordinates: [parseFloat(longitude), parseFloat(latitude)] },
+      address: address || 'Ubicación desconocida',
+      locality: locality || null,
+      estimatedValue: parseFloat(estimatedValue) || 0,
       postedByUserId: req.firebaseUid,
       postedByUserName: req.user.username || req.user.name,
     });
+
+    await addPointsToUser(req.firebaseUid, POINTS.POST_OBJECT, { postsCount: 1 });
+
     const clientObj = toClientObject(newObject);
     req.app.get('io').to('map').emit('object:new', { object: clientObj });
+    notificationService.notifyNearbyUsers(newObject).catch(console.error);
+
     res.status(201).json({ object: clientObj });
   } catch (err) { next(err); }
 });
@@ -164,6 +177,7 @@ router.get('/:id', authMiddleware, async (req, res, next) => {
   try {
     const object = await CurbObject.findById(req.params.id);
     if (!object || object.isDeleted) return res.status(404).json({ error: 'No encontrado' });
+    await CurbObject.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
     res.json({ object: toClientObject(object) });
   } catch (err) { next(err); }
 });
@@ -173,35 +187,74 @@ router.patch('/:id/status', authMiddleware, async (req, res, next) => {
   try {
     const { status } = req.body;
     const object = await CurbObject.findById(req.params.id);
-    if (!object) return res.status(404).json({ error: 'No encontrado' });
+    if (!object || object.isDeleted) return res.status(404).json({ error: 'No encontrado' });
 
-    object.status = status;
+    const isOwner = object.postedByUserId === req.firebaseUid;
+    const isClaimer = object.claimedByUserId === req.firebaseUid;
+
+    if (status === 'onMyWay') {
+      if (object.status === 'onMyWay' && !object.isClaimExpired) return res.status(409).json({ error: 'Ya reclamado' });
+      object.status = 'onMyWay';
+      object.claimedByUserId = req.firebaseUid;
+      object.claimedByUserName = req.user.username || req.user.name;
+      object.claimedAt = new Date();
+    } else if (status === 'available') {
+      object.status = 'available';
+      object.claimedByUserId = null;
+      object.claimedByUserName = null;
+    } else if (status === 'pickedUp') {
+      object.status = 'pickedUp';
+      object.isDeleted = true;
+      object.deletedAt = new Date();
+    }
+
     await object.save();
 
-    emitObjectEvent(req, 'object:updated', {
-      objectId: object._id.toString(),
-      status: object.status,
-      object: toClientObject(object)
-    });
+    const clientObj = toClientObject(object);
+    if (status === 'pickedUp') {
+      emitObjectEvent(req, 'object:deleted', { objectId: object._id.toString() });
+    } else {
+      emitObjectEvent(req, 'object:updated', { objectId: object._id.toString(), status: object.status, object: clientObj });
+    }
+
     res.json({ success: true, status: object.status });
   } catch (err) { next(err); }
 });
 
-// Actualizar ETA
+// Confirmar existencia
+router.post('/:id/confirm', authMiddleware, async (req, res, next) => {
+  try {
+    const object = await CurbObject.findById(req.params.id);
+    if (!object || object.isDeleted) return res.status(404).json({ error: 'No encontrado' });
+
+    if (object.confirmedByIds?.includes(req.firebaseUid)) return res.status(409).json({ error: 'Ya confirmado' });
+
+    await CurbObject.findByIdAndUpdate(req.params.id, {
+      lastConfirmedAt: new Date(),
+      $inc: { confirmations: 1 },
+      $addToSet: { confirmedByIds: req.firebaseUid }
+    });
+
+    await addPointsToUser(req.firebaseUid, POINTS.CONFIRM_OBJECT, { confirmationsCount: 1 });
+
+    const updated = await CurbObject.findById(req.params.id);
+    emitObjectEvent(req, 'object:updated', { objectId: req.params.id, object: toClientObject(updated) });
+
+    res.json({ success: true, firstTime: true });
+  } catch (err) { next(err); }
+});
+
+// ETA
 router.patch('/:id/eta', authMiddleware, async (req, res, next) => {
   try {
     const { eta } = req.body;
     const object = await CurbObject.findById(req.params.id);
-    if (!object) return res.status(404).json({ error: 'No encontrado' });
+    if (!object || object.claimedByUserId !== req.firebaseUid) return res.status(403).json({ error: 'No autorizado' });
 
     object.claimedUserEta = eta;
     await object.save();
 
-    emitObjectEvent(req, 'object:updated', {
-      objectId: object._id.toString(),
-      claimedUserEta: eta,
-      object: toClientObject(object)
-    });
+    emitObjectEvent(req, 'object:updated', { objectId: object._id.toString(), claimedUserEta: eta, object: toClientObject(object) });
     res.json({ success: true });
   } catch (err) { next(err); }
 });
