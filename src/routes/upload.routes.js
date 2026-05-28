@@ -36,17 +36,18 @@ const upload = multer({
  */
 router.post('/image', authMiddleware, upload.single('file'), async (req, res, next) => {
   try {
+    console.log(`[Upload] Solicitud recibida — uid: ${req.firebaseUid}, file: ${req.file?.originalname}, size: ${req.file?.size}`);
+
     if (!req.file) {
+      console.warn('[Upload] No se recibió archivo en el request');
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
     }
 
     const folder = req.body.folder === 'profiles' ? 'profiles' : 'objects';
+    console.log(`[Upload] Subiendo a Firebase Storage — folder: ${folder}, mime: ${req.file.mimetype}`);
 
-    const url = await uploadImage(
-      req.file.buffer,
-      req.file.mimetype,
-      folder,
-    );
+    const url = await uploadImage(req.file.buffer, req.file.mimetype, folder);
+    console.log(`[Upload] ✅ Subida exitosa — url: ${url}`);
 
     res.json({ url });
   } catch (err) {
@@ -56,7 +57,8 @@ router.post('/image', authMiddleware, upload.single('file'), async (req, res, ne
 
 // Manejo de error de Multer (tamaño/tipo)
 router.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError || err.message.includes('Solo se permiten')) {
+  if (err instanceof multer.MulterError || err.message?.includes('Solo se permiten')) {
+    console.error(`[Upload] Error Multer: ${err.message}`);
     return res.status(400).json({ error: err.message });
   }
   next(err);
