@@ -100,6 +100,12 @@ io.on('connection', (socket) => {
 // Sin esto, express-rate-limit ve 127.0.0.1 para todos los requests
 app.set('trust proxy', 1);
 
+// ─── Log de cada request que llega a Node.js ────────────────────────────────
+app.use((req, res, next) => {
+  console.log(`[REQ] ${req.method} ${req.originalUrl} | content-type: ${req.headers['content-type'] || '-'} | content-length: ${req.headers['content-length'] || '-'}`);
+  next();
+});
+
 // ─── Middlewares Globales ────────────────────────────────────────────────────
 app.use(helmet());
 app.use(compression());
