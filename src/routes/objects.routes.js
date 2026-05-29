@@ -66,9 +66,8 @@ const updateObjectImage = async (req, res) => {
     const object = await CurbObject.findByIdAndUpdate(
       id,
       {
-        $set: { imageUrl: imageUrl },
+        $set: { imageUrl: imageUrl, lastConfirmedAt: new Date() },
         $push: { imageUrls: { $each: [imageUrl], $position: 0 } },
-        $set: { lastConfirmedAt: new Date() }
       },
       { new: true }
     );
