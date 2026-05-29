@@ -20,6 +20,7 @@ const alertsRoutes  = require('./src/routes/alerts.routes');
 const requestsRoutes = require('./src/routes/requests.routes');
 const adminRoutes   = require('./src/routes/admin.routes');
 const uploadRoutes  = require('./src/routes/upload.routes');
+const statsRoutes   = require('./src/routes/stats.routes');
 
 const app    = express();
 const server = http.createServer(app);
@@ -89,6 +90,7 @@ app.use('/api/alerts',   alertsRoutes);
 app.use('/api/requests', requestsRoutes);
 app.use('/api/admin',    adminRoutes);
 app.use('/api/upload',   uploadRoutes);
+app.use('/api/stats',    statsRoutes);
 
 // Catch-all para /api que NO existen -> Devolver JSON, NO HTML
 app.all('/api/*', (req, res) => {
